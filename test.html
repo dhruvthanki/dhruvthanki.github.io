@@ -1,0 +1,123 @@
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+
+<style>
+
+a:not(.lightbox-close) {
+  display: inline-block;
+  background: #d62c1a;
+  height: 200px;
+  width: 200px;
+  line-height: 200px;
+  font-size: 42px;
+  text-align: center;
+  color: #ffffff;
+}
+
+/*LIGHTBOX STYLE*/
+.lightbox {
+  display: none;
+  position: fixed;
+  z-index: 999;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+}
+.lightbox .lightbox-video {
+  width: 100%;
+  padding-bottom: 56%;
+}
+.lightbox iframe {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  left: 10;
+  right: 0;
+}
+.lightbox img {
+  display: block;
+  margin: 0 auto;
+}
+.lightbox .lightbox-close {
+  position: absolute;
+  display: block;
+  top: 10px;
+  right: 10px;
+  color: #ffffff;
+  font-size: 26px;
+  height: 50px;
+  width: 50px;
+  background: rgba(255, 255, 255, 0.3);
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  line-height: 50px;
+  text-align: center;
+}
+.lightbox .lightbox-close:hover {
+  text-decoration: none;
+}
+.lightbox .lightbox-container {
+  max-width: 1024px;
+  margin: 100px auto 25px;
+}
+
+}
+</style>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+<body>
+  <a href="#lightbox" class="lightbox-toggle"
+     data-lightbox-type="video"
+     data-lightbox-content="https://www.youtube.com/embed/zIdyhGyXcUg">
+    Video</a>
+</body>
+
+  <script>
+  $('body').append(`
+      <div class="lightbox">
+        <a href="#lightbox" class="lightbox-close lightbox-toggle">X</a>
+        <div class="lightbox-container">
+          <div class="row">
+            <div class="col-sm-12 lightbox-column">
+            </div>
+          </div>
+        </div>
+      </div>
+    `);
+
+  $('.lightbox-toggle').on('click', (event) => {
+    event.preventDefault();
+    $('.lightbox').fadeToggle('fast');
+
+    let context = $(event.currentTarget).attr('data-lightbox-type');
+    let content = $(event.currentTarget).attr('data-lightbox-content');
+    console.log(event);
+    if (context == 'video') {
+      $('.lightbox-column').append(`
+          <div class="lightbox-video">
+          <iframe src="${content}" frameborder="0" allowfullscreen> </iframe>
+          </div>
+      `);
+    } else if (context == 'image') {
+      $('.lightbox-column').append(`
+          <img src="${content}" class="img-" frameborder="0" allowfullscreen>
+      `);
+    }
+  });
+
+  $('.lightbox-close').on('click', (event) => {
+    event.preventDefault();
+    $('.lightbox-column > *').remove();
+  });
+  </script>
+
+```youtube-embed
+{
+   "width": "560",
+   "height": "315",
+   "src": "https://www.youtube.com/embed/dQw4w9WgXcQ",
+   "title": "YouTube video player",
+   "frameborder": "0",
+   "allow": "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture",
+   "allowfullscreen": true
+}
