@@ -158,7 +158,8 @@ window.MathJax = {
   @media screen {
     /* wide equations and number-grids scroll within their box instead of
        overflowing the viewport on narrow screens */
-    mjx-container[display="true"] { max-width:100%; overflow-x:auto; overflow-y:hidden; }
+    mjx-container[display="true"] { max-width:100%; min-width:0 !important; }
+    mjx-container[display="true"] svg { max-width:100%; min-width:0 !important; height:auto; }
     .compute .body { overflow-x:auto; }
     img, svg { max-width:100%; height:auto; }
     /* MathJax's hidden accessibility MathML must not expand layout width
