@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Next Word — a transformer, end to end</title>
+<meta name="description" content="A from-scratch, worked example of how a transformer predicts the next word — every embedding, attention score, and probability computed by hand. A beginner's on-ramp to modern LLM internals.">
+<link rel="icon" href="favicon.svg">
+
+<!-- Social preview (Open Graph + Twitter) for https://dhruvthanki.github.io/the-next-word/ -->
+<link rel="canonical" href="https://dhruvthanki.github.io/the-next-word/">
+<meta property="og:type" content="article">
+<meta property="og:title" content="The Next Word — a transformer, end to end">
+<meta property="og:description" content="How a transformer turns a sentence into a prediction — every step, every number, worked by hand.">
+<meta property="og:image" content="https://dhruvthanki.github.io/the-next-word/og-image.png">
+<meta property="og:url" content="https://dhruvthanki.github.io/the-next-word/">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Next Word — a transformer, end to end">
+<meta name="twitter:description" content="How a transformer turns a sentence into a prediction — every step, every number.">
+<meta name="twitter:image" content="https://dhruvthanki.github.io/the-next-word/og-image.png">
+
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$']], displayMath: [['$$','$$']], tags: 'all' },
+  svg: { fontCache: 'none' }
+};
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" id="MathJax-script"></script>
+<style>
+  /* ---- Dark theme + Okabe-Ito colorblind-safe palette ----
+     No red/green opposition: categories use blue / orange / bluish-green /
+     reddish-purple, all mutually distinguishable under red-green color blindness. */
+  :root{
+    --bg:#13151b; --bg2:#1c1f28; --bg3:#252934; --cell:#2a2f3b;
+    --ink:#e9ebf2; --muted:#9aa1b3; --rule:#333949;
+
+    --blue:#5fb0ee;    --blue-soft:rgba(95,176,238,.15);   --blue-deep:#16202b;
+    --green:#2ec79a;   --green-soft:rgba(46,199,154,.15);  --green-deep:#15241f;  /* bluish-green */
+    --orange:#eda13c;  --orange-soft:rgba(237,161,60,.16); --orange-deep:#241d12;
+    --purple:#df93c7;  --purple-soft:rgba(223,147,199,.16);--purple-deep:#251b26; /* reddish-purple */
+
+    --mono:'SF Mono','JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;
+    --sans:-apple-system,'Inter','Segoe UI',Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{font-size:15px}
+  html,body{background:var(--bg);}
+  body{font-family:var(--sans); color:var(--ink); line-height:1.62; margin:0;
+       -webkit-font-smoothing:antialiased;}
+  .page{max-width:760px; margin:0 auto; padding:28px clamp(16px,5vw,56px) 56px;}
+
+  .eyebrow{font-size:.72rem; letter-spacing:.16em; text-transform:uppercase; color:var(--blue);
+           font-weight:700; margin:0 0 14px;}
+  .cover{min-height:82vh; display:flex; flex-direction:column; justify-content:center;}
+  h1{font-size:2.9rem; line-height:1.08; letter-spacing:-.02em; margin:0 0 .25em; font-weight:800; color:#fff;}
+  .subtitle{font-size:1.2rem; color:var(--muted); margin:.2em 0 0; font-weight:400;}
+  h2{font-size:1.55rem; letter-spacing:-.01em; margin:0 0 .7em; padding-top:6mm; font-weight:750; color:#fff;
+     break-before:page; page-break-before:always;}
+  .kicker{font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--blue);
+          font-weight:700; display:block; margin-bottom:6px;}
+  h3{font-size:1.16rem; margin:1.7em 0 .5em; font-weight:700; color:#eef0f6;}
+  p{margin:.7em 0;}
+  strong{font-weight:680; color:#fff;}
+  code{font-family:var(--mono); font-size:.85em; background:var(--blue-soft);
+       color:#9fd0f7; padding:.1em .38em; border-radius:5px;}
+  .byline{color:var(--muted); font-size:.94rem; border-left:3px solid var(--blue);
+          padding:.1em 0 .1em 14px; margin:1.5em 0 0; font-style:italic;}
+  .lead{font-size:1.1rem;}
+
+  .runner{background:var(--bg2); border:1px solid var(--rule);
+          background-image:linear-gradient(135deg,var(--blue-soft),var(--purple-soft));
+          border-radius:14px; padding:16px 20px; margin:1.5em 0; text-align:center;}
+  .runner .sent{font-family:var(--mono); font-size:1.15rem; color:#9fd0f7; font-weight:600;}
+  .runner .arrow{color:var(--purple); font-weight:700;}
+
+  .why{background:var(--bg2); border:1px solid var(--rule); border-left:3px solid var(--blue);
+       border-radius:0 10px 10px 0; padding:12px 18px; margin:1.2em 0;}
+  .why b{color:var(--blue);}
+  .checkpoint{background:var(--green-soft); border:1px solid rgba(46,199,154,.4); border-radius:12px;
+       padding:11px 18px; margin:1.4em 0; font-size:.96rem; color:#a7ecd5;}
+  .checkpoint b{color:var(--green);}
+  .note{background:var(--bg2); border:1px solid var(--rule); border-radius:10px;
+        padding:10px 16px; margin:1.2em 0; font-size:.92rem; color:var(--muted);}
+  .note strong{color:#eef0f6;}
+
+  .compute{border:1.5px solid var(--blue); border-radius:14px; margin:1.4em 0;
+           overflow:hidden; background:var(--bg2);}
+  .compute .hd{background:var(--blue); color:#0c1016; font-weight:700; font-size:.85rem;
+               letter-spacing:.04em; padding:7px 16px; text-transform:uppercase;}
+  .compute .body{padding:14px 18px;}
+
+  .mlabel{font-family:var(--mono); font-size:.9rem; color:var(--muted); margin:.4em 0 .2em;}
+  table.mtx{border-collapse:separate; border-spacing:3px; margin:6px 0; font-family:var(--mono);}
+  table.mtx td{width:30px; height:26px; text-align:center; font-size:.82rem; border-radius:5px;
+               background:var(--cell); color:var(--ink);}
+  td.q{background:var(--blue-soft); color:#9fd0f7;}
+  td.k{background:var(--green-soft); color:#7ee6c4;}
+  td.v{background:var(--orange-soft); color:#f3c486;}
+  td.hl{background:var(--purple-soft); color:#eeb9dc; font-weight:700;}
+  td.tok{background:var(--bg3); border:1px solid var(--rule); color:var(--muted); width:auto; padding:0 8px; white-space:nowrap;}
+  .inline-vec{display:inline-flex; gap:3px; vertical-align:middle;}
+  .inline-vec span{font-family:var(--mono); font-size:.8rem; background:var(--cell); border-radius:4px;
+                   padding:2px 6px;}
+  .flow{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:8px 0;}
+  .op{color:var(--muted); font-family:var(--mono); font-size:.85rem;}
+
+  .bars{margin:1.1em 0; font-size:.92rem;}
+  .bar-row{display:flex; align-items:center; gap:10px; margin:5px 0;}
+  .bar-label{width:60px; text-align:right; font-family:var(--mono); font-size:.84rem; color:var(--ink);}
+  .bar-track{flex:1; background:var(--bg3); border-radius:6px; overflow:hidden; height:22px;}
+  .bar-fill{height:100%; border-radius:6px; display:flex; align-items:center;
+            justify-content:flex-end; padding-right:8px; color:#0c1016; font-size:.78rem; font-weight:700;}
+
+  figure{margin:1.6em 0; text-align:center;}
+  figure svg{max-width:100%; height:auto;}
+  figcaption{font-size:.85rem; color:var(--muted); margin-top:8px;}
+
+  .ideas{list-style:none; padding:0; margin:1.3em 0;}
+  .ideas li{display:flex; align-items:center; gap:14px; padding:11px 16px; margin:8px 0;
+            background:var(--bg2); border:1px solid var(--rule); border-radius:12px;}
+  .ideas .num{flex:none; width:28px; height:28px; border-radius:8px; background:var(--blue);
+              color:#0c1016; font-weight:750; display:grid; place-items:center; font-size:.9rem;}
+  .ideas li.heart{border-color:var(--purple); background:var(--purple-soft);}
+  .ideas li.heart .num{background:var(--purple);}
+  .ideas .gloss{color:var(--muted);}
+
+  /* ---- print: flow like a book ---- */
+  h2, h3 { break-after: avoid-page; page-break-after: avoid; }
+  figure, .checkpoint, .compute, .runner, .why, .note, .bars,
+  table.mtx, .flow, mjx-container, .ideas li {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  p { orphans: 3; widows: 3; }
+  mjx-container[display="true"] { margin: 0.9em 0; }
+  mjx-container { color: var(--ink) !important; }
+  a{color:var(--blue); text-decoration:none; border-bottom:1px solid rgba(95,176,238,.4);}
+  .refs{margin:1.1em 0 0;}
+  .refs .grp{color:var(--blue); font-size:.72rem; letter-spacing:.06em; text-transform:uppercase;
+             font-weight:700; margin:1.4em 0 .5em;}
+  .refs ul{list-style:none; padding:0; margin:0;}
+  .refs li{padding:7px 0; border-bottom:1px solid var(--rule); font-size:.93rem; line-height:1.45;}
+  .refs a{font-weight:600;}
+  .refs .by{color:var(--muted);}
+  .refs .note2{color:var(--muted);}
+  .maptable a{color:inherit; border-bottom:1px dotted currentColor;}
+
+  table.maptable{border-collapse:collapse; width:100%; margin:1.3em 0; font-size:.92rem;}
+  table.maptable th, table.maptable td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule); vertical-align:top;}
+  table.maptable th{color:var(--blue); font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; font-weight:700;}
+  table.maptable td.our{color:#fff; font-weight:600;}
+  table.maptable td.mod{color:var(--orange); font-family:var(--mono); font-size:.84rem; white-space:nowrap;}
+  table.maptable{break-inside:avoid;}
+
+  /* page margins (and the dark running header/footer that fill them)
+     are supplied by the PDF renderer so every page has matching furniture. */
+
+  /* ---- responsive: browser viewing on phones / tablets / laptops ---- */
+  @media screen {
+    /* wide equations and number-grids scroll within their box instead of
+       overflowing the viewport on narrow screens */
+    mjx-container[display="true"] { max-width:100%; overflow-x:auto; overflow-y:hidden; }
+    .compute .body { overflow-x:auto; }
+    img, svg { max-width:100%; height:auto; }
+    /* MathJax's hidden accessibility MathML must not expand layout width
+       (screen-reader-only pattern: still readable, zero footprint) */
+    mjx-assistive-mml, mjx-assistive-mml * {
+      position:absolute !important; width:1px !important; height:1px !important;
+      overflow:hidden !important; clip:rect(0 0 0 0) !important; clip-path:inset(50%) !important;
+      white-space:nowrap !important;
+    }
+    html, body { overflow-x:hidden; }
+  }
+  @media screen and (max-width:600px) {
+    html { font-size:14px; }
+    h1 { font-size:2rem; }
+    h2 { font-size:1.3rem; }
+    .runner .sent { font-size:1rem; }
+    table.mtx td { width:26px; height:24px; font-size:.76rem; }
+    table.maptable td.mod { white-space:normal; }   /* let modern-name links wrap */
+    table.maptable, .refs li { font-size:.86rem; }
+  }
+  /* ---- print: fixed A4 geometry (PDF renderer uses print media) ---- */
+  @media print {
+    .page { padding:7mm 16mm 9mm; }
+    .cover { min-height:233mm; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+
+<header class="cover">
+<div class="eyebrow">Transformers · A worked example · ~12 min read</div>
+<h1>The Next Word</h1>
+<p class="subtitle">How a transformer turns a sentence into a prediction &mdash; every step, every number.</p>
+<p class="byline">No prior knowledge assumed. We pick one short sentence and follow it through all five stages of a transformer. Every matrix, dot product, and probability below is real and checks out &mdash; you can verify it with a calculator.</p>
+
+<p class="lead" style="margin-top:1.6em;">A transformer does exactly one thing: <strong>given some words, predict the next word.</strong> Everything it does is in service of that. So let&rsquo;s give it a sentence and watch it predict.</p>
+
+<div class="runner">
+  <span class="sent">"the cat sat on the"</span> &nbsp;<span class="arrow">&rarr;&nbsp; ?</span>
+</div>
+
+<p>By the end you&rsquo;ll have computed, by hand, why the answer comes out <strong>&ldquo;mat&rdquo;</strong>. There are five stages:</p>
+
+<ol class="ideas">
+  <li><span class="num">1</span><span><strong>Embeddings + position</strong> &mdash; <span class="gloss">turn each word, and where it sits, into numbers</span></span></li>
+  <li class="heart"><span class="num">2</span><span><strong>Attention</strong> &mdash; <span class="gloss">let words gather context from each other &nbsp;★ the heart</span></span></li>
+  <li><span class="num">3</span><span><strong>MLP</strong> &mdash; <span class="gloss">let each word digest what it gathered</span></span></li>
+  <li><span class="num">4</span><span><strong>Layers</strong> &mdash; <span class="gloss">stack 2+3 many times</span></span></li>
+  <li><span class="num">5</span><span><strong>Prediction</strong> &mdash; <span class="gloss">turn the result into the next word</span></span></li>
+</ol>
+</header><!-- /.cover -->
+
+
+<h2>Stage 1 &nbsp;·&nbsp; Embeddings: words become numbers</h2>
+
+<p>A computer can&rsquo;t compute on the letters <code>c-a-t</code>. So every word is assigned a short list of numbers &mdash; a <strong>vector</strong>. Words used similarly get similar vectors, so <em>meaning becomes geometry</em>: nearby vectors = related words.</p>
+
+<div class="why"><b>Why.</b> Numbers are the only thing we can do math on. A vector places each word as a point in space, and &ldquo;closeness&rdquo; in that space can encode meaning. The model <em>learns</em> these numbers during training; here we just pick simple ones.</div>
+
+<div class="compute">
+  <div class="hd">Compute · our 5 tokens as 4-dim vectors</div>
+  <div class="body">
+    <table class="mtx">
+      <tr><td class="tok">the</td><td>1</td><td>0</td><td>0</td><td>1</td></tr>
+      <tr><td class="tok">cat</td><td>0</td><td>2</td><td>1</td><td>0</td></tr>
+      <tr><td class="tok">sat</td><td>1</td><td>0</td><td>2</td><td>0</td></tr>
+      <tr><td class="tok">on</td><td>0</td><td>1</td><td>0</td><td>1</td></tr>
+      <tr><td class="tok">the</td><td>1</td><td>0</td><td>0</td><td>1</td></tr>
+    </table>
+    <p class="note" style="margin-bottom:0;">Real models use ~4000 numbers per word; we use 4 so we can see them. Note the two <code>"the"</code>s have identical <em>content</em> here &mdash; in a moment, position will pull them apart.</p>
+  </div>
+</div>
+
+<p>Formally, the content embeddings live in a learned matrix $E$ with one <strong>row</strong> per vocabulary word. Looking up token $t_i$ selects its row (we treat every token vector as a row throughout &mdash; the convention papers and code use):</p>
+
+$$ e_i = E_{t_i,\,:}, \qquad E \in \mathbb{R}^{|V| \times d} \label{eq:embed} $$
+
+<p>where $d$ is the model dimension (4 in our toy example, ~4000 in real models) and $|V|$ is the vocabulary size. This $e_i$ captures <em>what</em> the word means &mdash; but not yet <em>where</em> it sits.</p>
+
+<h3>Where each word sits: positional encoding</h3>
+
+<p>Here&rsquo;s a catch we must fix <em>before</em> attention. The attention step (next) treats the words as an unordered <em>set</em> &mdash; on its own it cannot tell <code>"the cat sat"</code> from <code>"sat cat the."</code> But order <em>is</em> meaning (&ldquo;dog bites man&rdquo; &ne; &ldquo;man bites dog&rdquo;). So we stamp each word with <strong>where it sits</strong> by adding a position vector $p_i$ to its content embedding:</p>
+
+$$ x_i = e_i + p_i \label{eq:pos} $$
+
+<p>Each slot gets its own distinct $p_i$, so the same word in two places ends up with two different input vectors $x_i$. <span style="color:var(--muted);">(Real models build $p_i$ from smooth functions &mdash; sinusoids, or rotations like RoPE; we use simple stamps so you can add them by hand.)</span></p>
+
+<div class="compute">
+  <div class="hd">Compute · stamp position onto content: &nbsp; x = e + p</div>
+  <div class="body">
+    <div class="mlabel">position p&nbsp;&nbsp;(one stamp per slot)</div>
+    <table class="mtx">
+      <tr><td class="tok">the @0</td><td class="k">0</td><td class="k">0</td><td class="k">0</td><td class="k">0</td></tr>
+      <tr><td class="tok">cat @1</td><td class="k">1</td><td class="k">0</td><td class="k">0</td><td class="k">0</td></tr>
+      <tr><td class="tok">sat @2</td><td class="k">0</td><td class="k">1</td><td class="k">0</td><td class="k">0</td></tr>
+      <tr><td class="tok">on @3</td><td class="k">0</td><td class="k">0</td><td class="k">1</td><td class="k">0</td></tr>
+      <tr><td class="tok">the @4</td><td class="k">0</td><td class="k">0</td><td class="k">0</td><td class="k">1</td></tr>
+    </table>
+    <div class="mlabel" style="margin-top:12px;">input x = e + p&nbsp;&nbsp;(what attention actually sees)</div>
+    <table class="mtx">
+      <tr><td class="tok">the @0</td><td>1</td><td>0</td><td>0</td><td>1</td></tr>
+      <tr><td class="tok">cat @1</td><td>1</td><td>2</td><td>1</td><td>0</td></tr>
+      <tr><td class="tok">sat @2</td><td>1</td><td>1</td><td>2</td><td>0</td></tr>
+      <tr><td class="tok">on @3</td><td>0</td><td>1</td><td>1</td><td>1</td></tr>
+      <tr><td class="tok">the @4</td><td>1</td><td>0</td><td>0</td><td>2</td></tr>
+    </table>
+    <p class="note" style="margin-bottom:0;">The two <code>"the"</code>s were identical as content, but now differ: <code>[1,0,0,1]</code> vs <code>[1,0,0,2]</code>. Position pulled them apart &mdash; <em>before</em> attention even runs.</p>
+  </div>
+</div>
+
+<div class="checkpoint"><b>Checkpoint.</b> Each word is now an input vector $x_i = e_i + p_i$ &mdash; <em>what</em> it means plus <em>where</em> it sits. The two <code>"the"</code>s already differ. ✓</div>
+
+
+<h2>Stage 2 &nbsp;·&nbsp; Attention &nbsp;<span style="color:var(--purple);font-size:.7em;">★ the heart</span></h2>
+
+<p>Here&rsquo;s the problem attention exists to solve. To predict what follows <code>"the"</code>, the model must know <em>what the sentence is about</em> &mdash; but the final <code>"the"</code>&rsquo;s vector knows nothing about &ldquo;cat&rdquo; or &ldquo;sat&rdquo; on its own. <strong>Attention lets it look at the other words and pull in their meaning.</strong></p>
+
+<div class="why"><b>The intuition.</b> Each word broadcasts a question &mdash; <em>&ldquo;who here is relevant to me?&rdquo;</em> &mdash; compares it against what every word advertises, and then mixes in the content of whichever words matched. We&rsquo;ll do this for the last word, <code>"the"</code>, since that&rsquo;s the one predicting the next token.</div>
+
+<h3>Query, Key, Value &mdash; three roles per word</h3>
+
+<p>Every word produces three vectors by multiplying its input vector $x$ with three <strong>learned</strong> matrices. Think of searching YouTube: your <span style="color:var(--blue);font-weight:600;">query</span> (what you type) is matched against each video&rsquo;s <span style="color:var(--green);font-weight:600;">key</span> (its title), and you receive its <span style="color:var(--orange);font-weight:600;">value</span> (the video itself).</p>
+
+$$ q = x\,W_Q \qquad k = x\,W_K \qquad v = x\,W_V \label{eq:qkv} $$
+
+<p>Each weight matrix has shape $d\times d_k$ (here $4\times 3$), turning a 4-dim word vector into a 3-dim query, key, or value.</p>
+
+<div class="compute">
+  <div class="hd">Compute · the query for the last word "the", &nbsp; x = [1,0,0,2]</div>
+  <div class="body">
+    <div class="mlabel">W<sub>Q</sub> &nbsp;(4×3)</div>
+    <table class="mtx">
+      <tr><td class="q">1</td><td class="q">0</td><td class="q">1</td></tr>
+      <tr><td class="q">0</td><td class="q">1</td><td class="q">1</td></tr>
+      <tr><td class="q">1</td><td class="q">0</td><td class="q">0</td></tr>
+      <tr><td class="q">0</td><td class="q">1</td><td class="q">0</td></tr>
+    </table>
+    <div class="flow">
+      <span class="op">q = [1,0,0,2]·W<sub>Q</sub>, &nbsp; e.g. q&#8322; = 1·0+0·1+0·0+2·1 = 2</span>
+    </div>
+    <div class="flow">
+      <span class="op">x dotted with each column &rarr;</span>
+      <span class="op">q =</span>
+      <table class="mtx" style="display:inline-table"><tr><td class="q">1</td><td class="q">2</td><td class="q">1</td></tr></table>
+    </div>
+  </div>
+</div>
+
+<p>Doing the same with $W_K$ and $W_V$ for <em>every</em> word gives a key and a value for each. (Same arithmetic, just repeated &mdash; we&rsquo;ll show the results.)</p>
+
+<h3>Step A &mdash; how relevant is each word? (dot products)</h3>
+
+<p>We score relevance by the <strong>dot product</strong> of our query with each word&rsquo;s key &mdash; one number measuring alignment. Bigger = more relevant.</p>
+
+$$ \text{score}_i = q \cdot k_i = \sum_j q_j\,k_{i,j} \label{eq:score} $$
+
+<div class="compute">
+  <div class="hd">Compute · q·k for each word &nbsp;(q = [1,2,1])</div>
+  <div class="body">
+    <table class="mtx">
+      <tr><td class="tok">word</td><td class="tok">key k</td><td class="tok">q · k</td></tr>
+      <tr><td class="tok">the @0</td><td><span class="inline-vec"><span>1</span><span>0</span><span>1</span></span></td><td class="hl">2</td></tr>
+      <tr><td class="tok">cat @1</td><td><span class="inline-vec"><span>3</span><span>3</span><span>1</span></span></td><td class="hl">10</td></tr>
+      <tr><td class="tok">sat @2</td><td><span class="inline-vec"><span>2</span><span>3</span><span>2</span></span></td><td class="hl">10</td></tr>
+      <tr><td class="tok">on @3</td><td><span class="inline-vec"><span>1</span><span>2</span><span>2</span></span></td><td class="hl">7</td></tr>
+      <tr><td class="tok">the @4</td><td><span class="inline-vec"><span>1</span><span>0</span><span>2</span></span></td><td class="hl">3</td></tr>
+    </table>
+    <p class="note" style="margin-bottom:0;">e.g. cat: $1{\cdot}3 + 2{\cdot}3 + 1{\cdot}1 = 10$. &nbsp;&ldquo;cat&rdquo; and &ldquo;sat&rdquo; <em>tie</em> for highest &mdash; the subject and the verb.</p>
+  </div>
+</div>
+
+<h3>Step B &mdash; turn scores into percentages (softmax)</h3>
+
+<p>Raw scores aren&rsquo;t percentages. <strong>Softmax</strong> turns any list of numbers into positive fractions that sum to 100% &mdash; bigger scores get exponentially bigger shares. (We first divide by $\sqrt{d_k}=\sqrt3$, a standard step that keeps scores from blowing up.)</p>
+
+$$ \text{weight}_i = \frac{e^{\,\text{score}_i/\sqrt{d_k}}}{\sum_j e^{\,\text{score}_j/\sqrt{d_k}}} \label{eq:softmax} $$
+
+<div class="bars">
+  <div class="bar-row"><span class="bar-label">cat</span><div class="bar-track"><div class="bar-fill" style="width:45.4%;background:var(--blue);">45.4%</div></div></div>
+  <div class="bar-row"><span class="bar-label">sat</span><div class="bar-track"><div class="bar-fill" style="width:45.4%;background:var(--orange);">45.4%</div></div></div>
+  <div class="bar-row"><span class="bar-label">on</span><div class="bar-track"><div class="bar-fill" style="width:8%;background:var(--muted);">8.0%</div></div></div>
+  <div class="bar-row"><span class="bar-label">the @4</span><div class="bar-track"><div class="bar-fill" style="width:2%;background:var(--muted);"></div></div><span style="margin-left:8px;font-size:.78rem;color:var(--muted);">0.8%</span></div>
+  <div class="bar-row"><span class="bar-label">the @0</span><div class="bar-track"><div class="bar-fill" style="width:1%;background:var(--muted);"></div></div><span style="margin-left:8px;font-size:.78rem;color:var(--muted);">0.4%</span></div>
+</div>
+
+<p>The model splits its attention almost equally between <strong>&ldquo;cat&rdquo; (the subject) and &ldquo;sat&rdquo; (the verb)</strong> &mdash; the two most informative words for guessing what comes next. That&rsquo;s exactly the context you&rsquo;d want.</p>
+
+<div class="note"><strong>Causal masking.</strong> Because the goal is to predict the <em>next</em> word, a real model <strong>masks</strong> attention so each position may attend only to itself and <em>earlier</em> words &mdash; never future ones (otherwise it could just peek at the answer). We sidestep this by computing only the <em>final</em> token, which is already allowed to see every word before it &mdash; so no masking is needed for our example.</div>
+
+<h3>Step C &mdash; mix the values by those weights</h3>
+
+<p>Now build the new vector for <code>"the"</code> as a weighted blend of every word&rsquo;s <span style="color:var(--orange);font-weight:600;">value</span>, using the percentages above. This blended vector is &ldquo;the&rdquo; <em>with context baked in</em>.</p>
+
+$$ \text{output} = \sum_i \text{weight}_i \, v_i \label{eq:blend} $$
+
+<div class="compute">
+  <div class="hd">Compute · the context-aware output vector</div>
+  <div class="body">
+    <div class="mlabel">values v (one row per word)</div>
+    <table class="mtx">
+      <tr><td class="tok">the @0</td><td class="v">3</td><td class="v">0</td><td class="v">3</td></tr>
+      <tr><td class="tok">cat @1</td><td class="v">2</td><td class="v">4</td><td class="v">1</td></tr>
+      <tr><td class="tok">sat @2</td><td class="v">2</td><td class="v">5</td><td class="v">1</td></tr>
+      <tr><td class="tok">on @3</td><td class="v">1</td><td class="v">3</td><td class="v">2</td></tr>
+      <tr><td class="tok">the @4</td><td class="v">4</td><td class="v">0</td><td class="v">5</td></tr>
+    </table>
+    <div class="flow">
+      <span class="op">0.454·v<sub>cat</sub> + 0.454·v<sub>sat</sub> + … &rarr; &nbsp; output =</span>
+      <table class="mtx" style="display:inline-table"><tr><td class="hl">1.94</td><td class="hl">4.32</td><td class="hl">1.12</td></tr></table>
+    </div>
+    <p class="note" style="margin-bottom:0;">The big middle value (4.32) comes straight from cat &amp; sat, whose values are large in that slot. &ldquo;the&rdquo; has absorbed the subject-and-verb meaning.</p>
+  </div>
+</div>
+
+<p>The famous one-line formula just packs Steps A&ndash;C &mdash; Eqs.&nbsp;$\eqref{eq:score}$, $\eqref{eq:softmax}$, $\eqref{eq:blend}$ &mdash; into one expression, and now you can read it:</p>
+
+$$ \text{Attention}(Q,K,V)=\underbrace{\text{softmax}\!\Big(\tfrac{QK^{\top}}{\sqrt{d_k}}\Big)}_{\text{the weights (A,B)}}\,V \quad\underbrace{}_{\text{the blend (C)}} \label{eq:attn} $$
+
+<p><strong>Multi-head attention.</strong> A word often needs several kinds of context at once (subject? tense? tone?). So this whole operation runs $H$ times in parallel &mdash; each &ldquo;head&rdquo; $h$ with its own $W_Q^h,W_K^h,W_V^h$ &mdash; and the results are concatenated and mixed by an output matrix $W_O$:</p>
+
+$$ \text{head}_h = \text{Attention}\!\big(XW_Q^h,\; XW_K^h,\; XW_V^h\big) \label{eq:head} $$
+$$ \text{MultiHead}(X) = \big[\,\text{head}_1 \,\Vert\, \text{head}_2 \,\Vert\, \cdots \,\Vert\, \text{head}_H\,\big]\,W_O \label{eq:mha} $$
+
+<p>where $\Vert$ means &ldquo;stack side by side.&rdquo; Same machinery as above, just repeated and recombined.</p>
+
+<div class="note"><strong>Toy-model caveat.</strong> $W_O$ maps the concatenated heads back to the model dimension $d$, so every layer&rsquo;s output matches its input size &mdash; that&rsquo;s what makes the residual sum in Eq.&nbsp;$\eqref{eq:resid}$ valid. For visibility our toy uses a <em>single</em> head with $d_k=3$ and omits $W_O$, so its attention output stays 3-dim ($\neq d{=}4$). That&rsquo;s why we feed that output straight into prediction rather than running it through the residual and MLP on actual numbers &mdash; those stay conceptual here.</div>
+
+<div class="checkpoint"><b>Checkpoint.</b> Attention = score relevance (q·k) &rarr; softmax to weights &rarr; blend the values. The final <code>"the"</code> is now context-aware: mostly cat + sat. ✓</div>
+
+
+<h2>Stage 3 &nbsp;·&nbsp; MLP: each word digests privately</h2>
+
+<p>Attention was <em>social</em> &mdash; words traded information. Now each word, on its own, processes what it gathered. The output vector is passed through a small two-step network: <strong>expand</strong> to a larger size (room to compute combinations), apply a nonlinearity, then <strong>squeeze</strong> back down.</p>
+
+<figure>
+<svg viewBox="0 0 560 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram: the attention output passes through an expand step, a nonlinearity, and a squeeze-back step to produce a refined word vector.">
+  <rect x="6" y="34" width="120" height="30" rx="8" fill="#251b26" stroke="#df93c7"/>
+  <text x="66" y="54" text-anchor="middle" font-size="11" fill="#df93c7">output [1.94,4.32,1.12]</text>
+  <text x="132" y="54" font-size="18" fill="#9aa1b3">&#8594;</text>
+  <rect x="158" y="22" width="120" height="54" rx="8" fill="#16202b" stroke="#5fb0ee"/>
+  <text x="218" y="46" text-anchor="middle" font-size="12" fill="#5fb0ee" font-weight="700">expand</text>
+  <text x="218" y="63" text-anchor="middle" font-size="10" fill="#9aa1b3">(room to think)</text>
+  <text x="284" y="54" font-size="18" fill="#9aa1b3">&#8594;</text>
+  <rect x="310" y="34" width="120" height="30" rx="8" fill="#16202b" stroke="#5fb0ee"/>
+  <text x="370" y="54" text-anchor="middle" font-size="12" fill="#5fb0ee" font-weight="700">squeeze back</text>
+  <text x="436" y="54" font-size="18" fill="#9aa1b3">&#8594;</text>
+  <rect x="462" y="34" width="92" height="30" rx="8" fill="#15241f" stroke="#2ec79a"/>
+  <text x="508" y="54" text-anchor="middle" font-size="11" fill="#2ec79a">refined word</text>
+</svg>
+</figure>
+
+<p>In symbols, it&rsquo;s two matrix multiplies with a nonlinearity $\phi$ in between &mdash; applied to each word&rsquo;s vector $x$ independently:</p>
+
+$$ \text{MLP}(x) = \phi\!\big(x\,W_1 + b_1\big)\,W_2 + b_2 \label{eq:mlp} $$
+
+<p>$W_1$ projects up to a larger hidden size (the &ldquo;room to think&rdquo;), $\phi$ is a nonlinearity (e.g. <em>ReLU</em> or <em>GELU</em>) that lets the network compute non-linear combinations, and $W_2$ projects back down. Without $\phi$, the two matrices would collapse into one and the layer could only do linear maps.</p>
+
+<div class="why"><b>The intuition.</b> Attention is the meeting where everyone shares; the MLP is each person back at their desk, digesting what was said. No word talks to another here &mdash; it&rsquo;s pure per-word refinement. <strong>Attention + MLP together = one &ldquo;layer.&rdquo;</strong></div>
+
+<div class="checkpoint"><b>Checkpoint.</b> The MLP refines each word&rsquo;s vector alone. One round of (attention + MLP) = one layer. ✓</div>
+
+
+<h2>Stage 4 &nbsp;·&nbsp; Layers: stack it deep</h2>
+
+<p>One layer gives shallow understanding. So we <strong>repeat the same (attention + MLP) block many times</strong> &mdash; dozens, in real models. Each layer&rsquo;s output is the next layer&rsquo;s input, so understanding compounds: early layers catch grammar, later layers assemble abstract meaning.</p>
+
+<figure>
+<svg viewBox="0 0 460 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram: layers 1 through N stacked, each feeding the next; early layers catch grammar, later layers build abstract meaning, producing a deeply context-aware vector.">
+  <text x="230" y="14" text-anchor="middle" font-size="11" fill="#9aa1b3">our context vector enters</text>
+  <g font-size="12">
+    <rect x="120" y="22" width="220" height="30" rx="8" fill="#16202b" stroke="#5fb0ee"/>
+    <text x="140" y="42" font-size="12" fill="#5fb0ee" font-weight="700">Layer 1</text>
+    <text x="330" y="42" text-anchor="end" font-size="10.5" fill="#9aa1b3">grammar, who-refers-to-what</text>
+    <rect x="120" y="58" width="220" height="30" rx="8" fill="#16202b" stroke="#5fb0ee"/>
+    <text x="140" y="78" font-size="12" fill="#5fb0ee" font-weight="700">Layer 2</text>
+    <text x="330" y="78" text-anchor="end" font-size="10.5" fill="#9aa1b3">phrases combine into ideas</text>
+    <rect x="120" y="94" width="220" height="30" rx="8" fill="#1c1f28" stroke="#333949" stroke-dasharray="5 4"/>
+    <text x="230" y="114" text-anchor="middle" font-size="11" fill="#9aa1b3">… × N layers …</text>
+    <rect x="120" y="130" width="220" height="30" rx="8" fill="#16202b" stroke="#5fb0ee"/>
+    <text x="140" y="150" font-size="12" fill="#5fb0ee" font-weight="700">Layer N</text>
+    <text x="330" y="150" text-anchor="end" font-size="10.5" fill="#9aa1b3">ready to predict</text>
+  </g>
+  <path d="M230 52 L230 58" stroke="#9aa1b3"/><path d="M230 88 L230 94" stroke="#9aa1b3"/>
+  <path d="M230 124 L230 130" stroke="#9aa1b3"/>
+  <text x="230" y="180" text-anchor="middle" font-size="11" fill="#9aa1b3">→ a deeply context-aware vector for the final position</text>
+</svg>
+</figure>
+
+<p>One layer is two sub-steps, and each <em>adds</em> its result back to its input &mdash; a <strong>residual connection</strong> &mdash; so information is never thrown away:</p>
+
+$$ x' = x + \text{MultiHead}(x) \qquad\quad y = x' + \text{MLP}(x') \label{eq:resid} $$
+
+<p>Stacking $N$ such layers just feeds each one&rsquo;s output into the next, starting from the embeddings $x^{(0)}$:</p>
+
+$$ x^{(\ell+1)} = \text{Layer}_\ell\big(x^{(\ell)}\big), \qquad \ell = 0, 1, \dots, N-1 \label{eq:stack} $$
+
+<div class="note">The residual form $x_{\text{out}} = x_{\text{in}} + \text{sublayer}(x_{\text{in}})$ is what lets you stack dozens of layers without the signal degrading: each layer only contributes a refinement on top of what&rsquo;s already there. <span style="color:var(--muted);">(Real models also insert a normalization step inside each sub-layer &mdash; omitted here as plumbing, not concept.)</span></div>
+
+<div class="checkpoint"><b>Checkpoint.</b> Depth = repeated gather-and-digest. Shallow patterns early, deep meaning late. ✓</div>
+
+
+<h2>Stage 5 &nbsp;·&nbsp; Prediction: numbers back into a word</h2>
+
+<p>After the last layer, we take the vector at the <strong>final position</strong> (it now carries the whole sentence&rsquo;s context) and score every word in the vocabulary. Each candidate word has its own <strong>output vector</strong>; the dot product with our context vector is its <strong>logit</strong> (raw score). Softmax &mdash; the same one as Eq.&nbsp;$\eqref{eq:softmax}$ &mdash; turns logits into probabilities.</p>
+
+<p>Concretely, an <strong>unembedding</strong> matrix $W_U$ (one <strong>column</strong> per vocabulary word) turns the final vector $x^{(N)}_{\text{last}}$ into a <strong>logit</strong> per word; softmax turns those into probabilities:</p>
+
+$$ z = x^{(N)}_{\text{last}}\, W_U, \qquad W_U \in \mathbb{R}^{d \times |V|},\quad z \in \mathbb{R}^{|V|} \label{eq:logits} $$
+$$ P(\text{next}=w) = \frac{e^{\,z_w}}{\sum_{w'} e^{\,z_{w'}}}, \qquad \widehat{w} = \arg\max_w P(\text{next}=w) \label{eq:predict} $$
+
+<p>Each <strong>column</strong> of $W_U$ is a word&rsquo;s &ldquo;signature&rdquo;; the dot product $z_w$ measures how well the context vector matches it. We then pick the highest-probability word (or <em>sample</em> from the distribution).</p>
+
+<div class="why"><b>The intuition.</b> This is attention&rsquo;s trick reused: match our context vector against each candidate word&rsquo;s &ldquo;signature.&rdquo; The best-aligned word wins. We&rsquo;ll use our attention output as the context vector to keep the thread concrete.</div>
+
+<div class="compute">
+  <div class="hd">Compute · score 4 candidate next-words &nbsp;(context = [1.94, 4.32, 1.12])</div>
+  <div class="body">
+    <table class="mtx">
+      <tr><td class="tok">word</td><td class="tok">W&#8338; column</td><td class="tok">logit (dot)</td></tr>
+      <tr><td class="tok">mat</td><td><span class="inline-vec"><span>2</span><span>-2</span><span>-1</span></span></td><td class="hl">-5.88</td></tr>
+      <tr><td class="tok">rug</td><td><span class="inline-vec"><span>-2</span><span>-1</span><span>1</span></span></td><td class="hl">-7.08</td></tr>
+      <tr><td class="tok">floor</td><td><span class="inline-vec"><span>-1</span><span>-1</span><span>-1</span></span></td><td class="hl">-7.38</td></tr>
+      <tr><td class="tok">carpet</td><td><span class="inline-vec"><span>-2</span><span>-1</span><span>0</span></span></td><td class="hl">-8.20</td></tr>
+    </table>
+    <p class="note" style="margin-bottom:0;">e.g. mat: $2(1.94) - 2(4.32) - 1(1.12) = -5.88$. Logits are usually negative &mdash; only their <em>differences</em> matter. After softmax over the vocabulary:</p>
+  </div>
+</div>
+
+<div class="bars">
+  <div class="bar-row"><span class="bar-label">mat</span><div class="bar-track"><div class="bar-fill" style="width:61.7%;background:var(--green);">61.7%</div></div></div>
+  <div class="bar-row"><span class="bar-label">rug</span><div class="bar-track"><div class="bar-fill" style="width:18.6%;background:var(--blue);">18.6%</div></div></div>
+  <div class="bar-row"><span class="bar-label">floor</span><div class="bar-track"><div class="bar-fill" style="width:13.7%;background:var(--blue);">13.7%</div></div></div>
+  <div class="bar-row"><span class="bar-label">carpet</span><div class="bar-track"><div class="bar-fill" style="width:6%;background:var(--muted);">6.0%</div></div></div>
+</div>
+
+<p style="text-align:center; font-size:1.1rem;"><code>"the cat sat on the"</code> &nbsp;<span style="color:var(--green);font-weight:700;">&rarr; mat</span> &nbsp;(62%). <strong>You just predicted a word, by hand.</strong></p>
+
+<p>Then the loop: append <code>"mat"</code> to the sentence and run the entire machine again to get the next word. And again. That predict&rarr;append&rarr;repeat loop <em>is</em> how an LLM writes whole paragraphs &mdash; one word at a time.</p>
+
+<div class="checkpoint"><b>Checkpoint.</b> Final vector → a logit per candidate word → softmax → pick one → append → repeat. ✓</div>
+
+
+<h2>The whole machine, in one view</h2>
+
+<figure>
+<svg viewBox="0 0 520 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram of the full transformer: input embeddings, then a repeated layer of attention and MLP, then prediction, with a loop arrow back to append the predicted word and run again.">
+  <rect x="140" y="8" width="240" height="30" rx="8" fill="#1c1f28" stroke="#333949"/>
+  <text x="260" y="28" text-anchor="middle" font-size="12" font-family="monospace" fill="#e9ebf2">"the cat sat on the"</text>
+  <path d="M260 38 L260 50" stroke="#9aa1b3"/>
+  <rect x="120" y="52" width="280" height="32" rx="9" fill="#16202b" stroke="#5fb0ee"/>
+  <circle cx="144" cy="68" r="10" fill="#5fb0ee"/><text x="144" y="72" text-anchor="middle" font-size="11" fill="#0c1016" font-weight="700">1</text>
+  <text x="164" y="72" font-size="12" fill="#5fb0ee" font-weight="650">Embeddings — words → vectors</text>
+  <path d="M260 84 L260 96" stroke="#9aa1b3"/>
+  <rect x="92" y="98" width="336" height="150" rx="12" fill="none" stroke="#5fb0ee" stroke-dasharray="6 4"/>
+  <text x="260" y="115" text-anchor="middle" font-size="11" fill="#9aa1b3" font-style="italic">one LAYER — repeat × N  (Stage 4)</text>
+  <rect x="120" y="124" width="280" height="42" rx="9" fill="#251b26" stroke="#df93c7"/>
+  <circle cx="144" cy="145" r="10" fill="#df93c7"/><text x="144" y="149" text-anchor="middle" font-size="11" fill="#0c1016" font-weight="700">2</text>
+  <text x="164" y="141" font-size="12" fill="#df93c7" font-weight="650">Attention — q·k → softmax → blend v</text>
+  <text x="164" y="158" font-size="10.5" fill="#df93c7">words pull in context (cat 45%, sat 45%)</text>
+  <path d="M260 166 L260 178" stroke="#9aa1b3"/>
+  <rect x="120" y="180" width="280" height="42" rx="9" fill="#15241f" stroke="#2ec79a"/>
+  <circle cx="144" cy="201" r="10" fill="#2ec79a"/><text x="144" y="205" text-anchor="middle" font-size="11" fill="#0c1016" font-weight="700">3</text>
+  <text x="164" y="197" font-size="12" fill="#2ec79a" font-weight="650">MLP — each word digests alone</text>
+  <text x="164" y="214" font-size="10.5" fill="#2ec79a">per-word refinement</text>
+  <path d="M260 248 L260 270" stroke="#9aa1b3"/>
+  <rect x="120" y="272" width="280" height="42" rx="9" fill="#241d12" stroke="#eda13c"/>
+  <circle cx="144" cy="293" r="10" fill="#eda13c"/><text x="144" y="297" text-anchor="middle" font-size="11" fill="#0c1016" font-weight="700">5</text>
+  <text x="164" y="289" font-size="12" fill="#eda13c" font-weight="650">Prediction — logits → softmax → "mat"</text>
+  <text x="164" y="306" font-size="10.5" fill="#eda13c">mat 62% · rug 19% · floor 14% · carpet 6%</text>
+  <path d="M400 293 C470 293 470 23 392 23" stroke="#eda13c" stroke-width="1.5" fill="none" stroke-dasharray="5 4"/>
+  <polygon points="392,18 392,28 384,23" fill="#eda13c"/>
+  <text x="486" y="160" font-size="10.5" fill="#eda13c" transform="rotate(90 486 160)">append "mat", run again</text>
+</svg>
+</figure>
+
+
+<h2>The one-paragraph version</h2>
+
+<p style="font-size:1.05rem;">A transformer turns each word into a vector, then repeatedly lets the words <strong>look at each other and exchange context</strong> (attention) and <strong>individually digest</strong> it (the MLP). Stacking that gather-and-digest cycle builds a deep, context-aware understanding. It then turns the final vector into a <strong>probability over the next word</strong>, picks one, appends it, and repeats. The one idea that makes it all work is <strong>attention</strong> (Eq.&nbsp;$\eqref{eq:attn}$): score relevance with a dot product, softmax it into weights, and blend the values &mdash; which is exactly the arithmetic you just did for <code>"the cat sat on the → mat."</code></p>
+
+<div class="note" style="margin-top:1.6em;"><strong>What we kept out, on purpose:</strong> normalization (keeping numbers stable between layers) and tokenization (splitting text into sub-word pieces) are both real, but they&rsquo;re refinements bolted onto these five stages &mdash; not new ideas. Every modern architecture variant is a tweak to one of the boxes above.</div>
+
+
+<h2>Bridge to the modern transformer</h2>
+
+<p>Everything above is the timeless core. A <em>modern</em> model &mdash; like the one dissected in Aleksa Gordić&rsquo;s <a href="https://www.aleksagordic.com/blog/transformer">&ldquo;The Life of a Token&rdquo;</a> &mdash; keeps all five stages but swaps fancier machinery into some of them. Here&rsquo;s the name-map (each name links to its source paper), so the jargon doesn&rsquo;t trip you up when you read it:</p>
+
+<table class="maptable">
+  <tr><th scope="col">In this doc</th><th scope="col">Name you&rsquo;ll see</th><th scope="col">What&rsquo;s different</th></tr>
+  <tr><td class="our">Positional encoding<br>(add&nbsp;$p_i$, Eq.&nbsp;$\eqref{eq:pos}$)</td><td class="mod"><a href="https://arxiv.org/abs/2104.09864">RoPE</a> · <a href="https://arxiv.org/abs/2309.00071">YaRN</a></td><td>Instead of <em>adding</em> a position vector, modern models <em>rotate</em> each query and key by an angle that grows with position; YaRN stretches this to very long contexts.</td></tr>
+  <tr><td class="our">MLP (Eq.&nbsp;$\eqref{eq:mlp}$)</td><td class="mod"><a href="https://arxiv.org/abs/2002.05202">SwiGLU · GeGLU</a></td><td>A <em>gated</em> two-branch MLP: one branch goes through the nonlinearity and multiplies (&ldquo;gates&rdquo;) the other. Same role, a bit more expressive.</td></tr>
+  <tr><td class="our">Normalization<br>(the step we skipped)</td><td class="mod"><a href="https://arxiv.org/abs/1910.07467">RMSNorm</a> · <a href="https://arxiv.org/abs/1607.06450">LayerNorm</a></td><td>Rescales each vector to keep numbers stable between layers. RMSNorm is the common modern choice.</td></tr>
+  <tr><td class="our">Multi-head attention<br>(Eq.&nbsp;$\eqref{eq:mha}$)</td><td class="mod">MHA · <a href="https://arxiv.org/abs/2305.13245">GQA</a> · <a href="https://arxiv.org/abs/1911.02150">MQA</a></td><td>The same heads &mdash; but several heads <em>share</em> one set of keys/values to save memory (GQA = grouped-query, the modern default).</td></tr>
+  <tr><td class="our">Embeddings, attention core,<br>residuals, prediction</td><td class="mod">(unchanged)</td><td>These are identical. The dot-product attention you computed by hand is exactly what runs inside every modern model.</td></tr>
+</table>
+
+<p>That&rsquo;s the whole trick: if you can follow the five stages here, you can read his blog &mdash; you&rsquo;ll just be meeting new <em>names</em> for parts you already understand.</p>
+
+
+<h2>Where to go next</h2>
+
+<p>This document is the on-ramp. Here&rsquo;s a path onward, roughly easy&nbsp;&rarr;&nbsp;deep:</p>
+
+<div class="refs">
+
+  <div class="grp">Watch first — visual intuition</div>
+  <ul>
+    <li><a href="https://www.youtube.com/watch?v=eMlx5fFNoYc">Attention in transformers, visually explained</a> &mdash; <span class="by">3Blue1Brown.</span> The single best animation of the attention mechanism.</li>
+    <li><a href="https://www.youtube.com/watch?v=wjZofJX0v4M">But what is a GPT?</a> &mdash; <span class="by">3Blue1Brown.</span> The big picture, beautifully animated.</li>
+  </ul>
+
+  <div class="grp">Read — build the foundation</div>
+  <ul>
+    <li><a href="https://jalammar.github.io/illustrated-transformer/">The Illustrated Transformer</a> &mdash; <span class="by">Jay Alammar.</span> The classic diagram-driven walkthrough (original 2017 architecture).</li>
+    <li><a href="https://www.aleksagordic.com/blog/transformer">The Life of a Token</a> &mdash; <span class="by">Aleksa Gordić.</span> The <em>modern</em> dense transformer in depth (RoPE/YaRN, RMSNorm, GQA) &mdash; the blog this doc bridges to.</li>
+  </ul>
+
+  <div class="grp">Do it — by hand and in code</div>
+  <ul>
+    <li><a href="https://www.byhand.ai/">AI by Hand</a> &mdash; <span class="by">Prof. Tom Yeh.</span> Worksheets that make you compute the matrices on paper.</li>
+    <li><a href="https://www.youtube.com/watch?v=kCc8FmEb1nY">Let&rsquo;s build GPT from scratch</a> &mdash; <span class="by">Andrej Karpathy.</span> Code a working transformer line by line.</li>
+    <li><a href="https://nlp.seas.harvard.edu/annotated-transformer/">The Annotated Transformer</a> &mdash; <span class="by">Harvard NLP.</span> The original paper as runnable PyTorch.</li>
+  </ul>
+
+  <div class="grp">The source papers</div>
+  <ul>
+    <li><a href="https://arxiv.org/abs/1706.03762">Attention Is All You Need</a> &mdash; <span class="by">Vaswani et al., 2017.</span> The paper that started it.</li>
+    <li><a href="https://arxiv.org/abs/2104.09864">RoFormer (RoPE)</a> · <a href="https://arxiv.org/abs/2309.00071">YaRN</a> · <a href="https://arxiv.org/abs/2002.05202">GLU Variants (GeGLU/SwiGLU)</a> · <a href="https://arxiv.org/abs/1910.07467">RMSNorm</a> · <a href="https://arxiv.org/abs/2305.13245">GQA</a> &mdash; <span class="by">the modern pieces named in the bridge above.</span></li>
+  </ul>
+
+</div>
+
+<p class="note2" style="font-size:.85rem; color:var(--muted); margin-top:1.4em;">External links were accurate at the time of writing; if one moves, a title search will find it.</p>
+
+</main>
+</body>
+</html>
