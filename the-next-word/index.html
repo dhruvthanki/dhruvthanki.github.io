@@ -26,6 +26,12 @@ window.MathJax = {
 };
 </script>
 <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" id="MathJax-script"></script>
+
+<!-- hand-drawn diagrams: rough.js (the engine Excalidraw uses) + handwriting fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shantell+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/roughjs@4.6.6/bundled/rough.js"></script>
 <style>
   /* ---- Dark theme + Okabe-Ito colorblind-safe palette ----
      No red/green opposition: categories use blue / orange / bluish-green /
@@ -112,8 +118,21 @@ window.MathJax = {
             justify-content:flex-end; padding-right:8px; color:#0c1016; font-size:.78rem; font-weight:700;}
 
   figure{margin:1.6em 0; text-align:center;}
-  figure svg{max-width:100%; height:auto;}
+  figure svg{max-width:100%; width:100%; height:auto;}
   figcaption{font-size:.85rem; color:var(--muted); margin-top:8px;}
+  /* hand-drawn diagram lettering — Virgil, the actual Excalidraw font
+     (served cross-origin by excalidraw.com with CORS + long cache).
+     Shantell Sans is a hand-drawn fallback if Virgil fails to load.
+     .scrawl / .mono are hooks that resolve to the same face so a single
+     diagram never mixes typefaces. */
+  @font-face{
+    font-family:'Virgil';
+    src:url('https://excalidraw.com/Virgil.woff2') format('woff2');
+    font-display:swap;
+  }
+  figure svg text,
+  figure svg text.scrawl,
+  figure svg text.mono{font-family:'Virgil','Shantell Sans',var(--sans);}
 
   .ideas{list-style:none; padding:0; margin:1.3em 0;}
   .ideas li{display:flex; align-items:center; gap:14px; padding:11px 16px; margin:8px 0;
@@ -126,6 +145,8 @@ window.MathJax = {
 
   /* ---- print: flow like a book ---- */
   h2, h3 { break-after: avoid-page; page-break-after: avoid; }
+  /* keep a lead-in sentence on the same page as the figure it introduces */
+  p:has(+ figure) { break-after: avoid-page; page-break-after: avoid; }
   figure, .checkpoint, .compute, .runner, .why, .note, .bars,
   table.mtx, .flow, mjx-container, .ideas li {
     break-inside: avoid; page-break-inside: avoid;
@@ -181,6 +202,12 @@ window.MathJax = {
     table.maptable td.mod { white-space:normal; }   /* let modern-name links wrap */
     table.maptable, .refs li { font-size:.86rem; }
     mjx-container[display="true"] { text-align:left; }
+    /* wide hand-drawn diagrams: scroll horizontally rather than shrink the
+       lettering to an unreadable size — same behaviour as wide equations */
+    figure { overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; }
+    figure svg { min-width:600px; }
+    figure::-webkit-scrollbar { height:5px; }
+    figure::-webkit-scrollbar-thumb { background:var(--rule); border-radius:3px; }
   }
   /* ---- print: fixed A4 geometry (PDF renderer uses print media) ---- */
   @media print {
@@ -221,6 +248,15 @@ window.MathJax = {
 <p>A computer can&rsquo;t compute on the letters <code>c-a-t</code>. So every word is assigned a short list of numbers &mdash; a <strong>vector</strong>. Words used similarly get similar vectors, so <em>meaning becomes geometry</em>: nearby vectors = related words.</p>
 
 <div class="why"><b>Why.</b> Numbers are the only thing we can do math on. A vector places each word as a point in space, and &ldquo;closeness&rdquo; in that space can encode meaning. The model <em>learns</em> these numbers during training; here we just pick simple ones.</div>
+
+<p>Picture that space directly. Words don&rsquo;t scatter at random &mdash; they <strong>cluster by meaning</strong>: animals near animals, actions near actions, the little glue words off in their own corner.</p>
+
+<figure>
+<svg id="dgm-embed" viewBox="0 0 760 340" role="img" aria-label="A 2-D meaning space: words with similar meaning sit near each other — animals cluster together, action words cluster together, and function words cluster together."></svg>
+<figcaption>Similar words land near each other &mdash; meaning becomes geometry. (Real models use thousands of axes; here, two.)</figcaption>
+</figure>
+
+<p>Our five words live in a space just like this &mdash; we only need to write down their coordinates. With four numbers each, here they are:</p>
 
 <div class="compute">
   <div class="hd">Compute · our 5 tokens as 4-dim vectors</div>
@@ -289,6 +325,15 @@ $$ x_i = e_i + p_i \label{eq:pos} $$
 $$ q = x\,W_Q \qquad k = x\,W_K \qquad v = x\,W_V \label{eq:qkv} $$
 
 <p>Each weight matrix has shape $d\times d_k$ (here $4\times 3$), turning a 4-dim word vector into a 3-dim query, key, or value.</p>
+
+<p>So one input vector fans out into three &mdash; a query, a key, and a value, each through its own learned matrix:</p>
+
+<figure>
+<svg id="dgm-qkv" viewBox="0 0 760 320" role="img" aria-label="One word vector x is multiplied by three learned matrices to produce three roles: a query (what you type), a key (each word's title), and a value (the content returned)."></svg>
+<figcaption>One word, three roles &mdash; each made by its own learned matrix. Think YouTube: query &times; key &rarr; you get the value.</figcaption>
+</figure>
+
+<p>Let&rsquo;s make that concrete &mdash; the query for our last word, worked out by hand:</p>
 
 <div class="compute">
   <div class="hd">Compute · the query for the last word "the", &nbsp; x = [1,0,0,2]</div>
@@ -381,6 +426,13 @@ $$ \text{output} = \sum_i \text{weight}_i \, v_i \label{eq:blend} $$
 
 $$ \text{Attention}(Q,K,V)=\underbrace{\text{softmax}\!\Big(\tfrac{QK^{\top}}{\sqrt{d_k}}\Big)}_{\text{the weights (A,B)}}\,V \quad\underbrace{}_{\text{the blend (C)}} \label{eq:attn} $$
 
+<p>And the three steps you just did are really one motion &mdash; <em>ask, score, blend</em>:</p>
+
+<figure>
+<svg id="dgm-attn" viewBox="0 0 880 560" role="img" aria-label="The last word 'the' broadcasts a query, scores every word by dot product, and blends the values of the winners — cat and sat — into a context-aware output vector. Arrow thickness shows attention weight."></svg>
+<figcaption>Steps A&ndash;C in one picture: the final &ldquo;the&rdquo; asks who&rsquo;s relevant, and pulls in cat + sat &rarr; a context-aware vector.</figcaption>
+</figure>
+
 <p><strong>Multi-head attention.</strong> A word often needs several kinds of context at once (subject? tense? tone?). So this whole operation runs $H$ times in parallel &mdash; each &ldquo;head&rdquo; $h$ with its own $W_Q^h,W_K^h,W_V^h$ &mdash; and the results are concatenated and mixed by an output matrix $W_O$:</p>
 
 $$ \text{head}_h = \text{Attention}\!\big(XW_Q^h,\; XW_K^h,\; XW_V^h\big) \label{eq:head} $$
@@ -398,20 +450,7 @@ $$ \text{MultiHead}(X) = \big[\,\text{head}_1 \,\Vert\, \text{head}_2 \,\Vert\, 
 <p>Attention was <em>social</em> &mdash; words traded information. Now each word, on its own, processes what it gathered. The output vector is passed through a small two-step network: <strong>expand</strong> to a larger size (room to compute combinations), apply a nonlinearity, then <strong>squeeze</strong> back down.</p>
 
 <figure>
-<svg viewBox="0 0 560 96" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram: the attention output passes through an expand step, a nonlinearity, and a squeeze-back step to produce a refined word vector.">
-  <rect x="6" y="34" width="120" height="30" rx="8" fill="#251b26" stroke="#df93c7"/>
-  <text x="66" y="54" text-anchor="middle" font-size="11" fill="#df93c7">output [1.94,4.32,1.12]</text>
-  <text x="132" y="54" font-size="18" fill="#9aa1b3">&#8594;</text>
-  <rect x="158" y="22" width="120" height="54" rx="8" fill="#16202b" stroke="#5fb0ee"/>
-  <text x="218" y="46" text-anchor="middle" font-size="12" fill="#5fb0ee" font-weight="700">expand</text>
-  <text x="218" y="63" text-anchor="middle" font-size="10" fill="#9aa1b3">(room to think)</text>
-  <text x="284" y="54" font-size="18" fill="#9aa1b3">&#8594;</text>
-  <rect x="310" y="34" width="120" height="30" rx="8" fill="#16202b" stroke="#5fb0ee"/>
-  <text x="370" y="54" text-anchor="middle" font-size="12" fill="#5fb0ee" font-weight="700">squeeze back</text>
-  <text x="436" y="54" font-size="18" fill="#9aa1b3">&#8594;</text>
-  <rect x="462" y="34" width="92" height="30" rx="8" fill="#15241f" stroke="#2ec79a"/>
-  <text x="508" y="54" text-anchor="middle" font-size="11" fill="#2ec79a">refined word</text>
-</svg>
+<svg id="dgm-mlp" viewBox="0 0 740 170" role="img" aria-label="Diagram: the attention output passes through an expand step, a GELU nonlinearity, and a squeeze-back step to produce a refined word vector."></svg>
 </figure>
 
 <p>In symbols, it&rsquo;s two matrix multiplies with a nonlinearity $\phi$ in between &mdash; applied to each word&rsquo;s vector $x$ independently:</p>
@@ -430,25 +469,7 @@ $$ \text{MLP}(x) = \phi\!\big(x\,W_1 + b_1\big)\,W_2 + b_2 \label{eq:mlp} $$
 <p>One layer gives shallow understanding. So we <strong>repeat the same (attention + MLP) block many times</strong> &mdash; dozens, in real models. Each layer&rsquo;s output is the next layer&rsquo;s input, so understanding compounds: early layers catch grammar, later layers assemble abstract meaning.</p>
 
 <figure>
-<svg viewBox="0 0 460 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram: layers 1 through N stacked, each feeding the next; early layers catch grammar, later layers build abstract meaning, producing a deeply context-aware vector.">
-  <text x="230" y="14" text-anchor="middle" font-size="11" fill="#9aa1b3">our context vector enters</text>
-  <g font-size="12">
-    <rect x="120" y="22" width="220" height="30" rx="8" fill="#16202b" stroke="#5fb0ee"/>
-    <text x="140" y="42" font-size="12" fill="#5fb0ee" font-weight="700">Layer 1</text>
-    <text x="330" y="42" text-anchor="end" font-size="10.5" fill="#9aa1b3">grammar, who-refers-to-what</text>
-    <rect x="120" y="58" width="220" height="30" rx="8" fill="#16202b" stroke="#5fb0ee"/>
-    <text x="140" y="78" font-size="12" fill="#5fb0ee" font-weight="700">Layer 2</text>
-    <text x="330" y="78" text-anchor="end" font-size="10.5" fill="#9aa1b3">phrases combine into ideas</text>
-    <rect x="120" y="94" width="220" height="30" rx="8" fill="#1c1f28" stroke="#333949" stroke-dasharray="5 4"/>
-    <text x="230" y="114" text-anchor="middle" font-size="11" fill="#9aa1b3">… × N layers …</text>
-    <rect x="120" y="130" width="220" height="30" rx="8" fill="#16202b" stroke="#5fb0ee"/>
-    <text x="140" y="150" font-size="12" fill="#5fb0ee" font-weight="700">Layer N</text>
-    <text x="330" y="150" text-anchor="end" font-size="10.5" fill="#9aa1b3">ready to predict</text>
-  </g>
-  <path d="M230 52 L230 58" stroke="#9aa1b3"/><path d="M230 88 L230 94" stroke="#9aa1b3"/>
-  <path d="M230 124 L230 130" stroke="#9aa1b3"/>
-  <text x="230" y="180" text-anchor="middle" font-size="11" fill="#9aa1b3">→ a deeply context-aware vector for the final position</text>
-</svg>
+<svg id="dgm-layers" viewBox="0 0 600 300" role="img" aria-label="Diagram: layers 1 through N stacked, each feeding the next; early layers catch grammar, later layers build abstract meaning, producing a deeply context-aware vector."></svg>
 </figure>
 
 <p>One layer is two sub-steps, and each <em>adds</em> its result back to its input &mdash; a <strong>residual connection</strong> &mdash; so information is never thrown away:</p>
@@ -476,6 +497,15 @@ $$ P(\text{next}=w) = \frac{e^{\,z_w}}{\sum_{w'} e^{\,z_{w'}}}, \qquad \widehat{
 <p>Each <strong>column</strong> of $W_U$ is a word&rsquo;s &ldquo;signature&rdquo;; the dot product $z_w$ measures how well the context vector matches it. We then pick the highest-probability word (or <em>sample</em> from the distribution).</p>
 
 <div class="why"><b>The intuition.</b> This is attention&rsquo;s trick reused: match our context vector against each candidate word&rsquo;s &ldquo;signature.&rdquo; The best-aligned word wins. We&rsquo;ll use our attention output as the context vector to keep the thread concrete.</div>
+
+<p>It&rsquo;s the attention picture again, now aimed at the vocabulary &mdash; the context vector tries on each candidate word&rsquo;s signature and keeps the best fit:</p>
+
+<figure>
+<svg id="dgm-predict" viewBox="0 0 780 350" role="img" aria-label="The final context vector is matched by dot product against each candidate word's signature column; 'mat' is the best match and wins with 62 percent."></svg>
+<figcaption>The same matching trick: score the context vector against each candidate&rsquo;s signature &mdash; &ldquo;mat&rdquo; wins.</figcaption>
+</figure>
+
+<p>And the arithmetic behind it &mdash; one dot product per candidate word:</p>
 
 <div class="compute">
   <div class="hd">Compute · score 4 candidate next-words &nbsp;(context = [1.94, 4.32, 1.12])</div>
@@ -507,35 +537,11 @@ $$ P(\text{next}=w) = \frac{e^{\,z_w}}{\sum_{w'} e^{\,z_{w'}}}, \qquad \widehat{
 
 <h2>The whole machine, in one view</h2>
 
+<p>Every stage you just computed by hand, assembled into a single picture &mdash; including the loop that turns one prediction into a whole paragraph:</p>
+
 <figure>
-<svg viewBox="0 0 520 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagram of the full transformer: input embeddings, then a repeated layer of attention and MLP, then prediction, with a loop arrow back to append the predicted word and run again.">
-  <rect x="140" y="8" width="240" height="30" rx="8" fill="#1c1f28" stroke="#333949"/>
-  <text x="260" y="28" text-anchor="middle" font-size="12" font-family="monospace" fill="#e9ebf2">"the cat sat on the"</text>
-  <path d="M260 38 L260 50" stroke="#9aa1b3"/>
-  <rect x="120" y="52" width="280" height="32" rx="9" fill="#16202b" stroke="#5fb0ee"/>
-  <circle cx="144" cy="68" r="10" fill="#5fb0ee"/><text x="144" y="72" text-anchor="middle" font-size="11" fill="#0c1016" font-weight="700">1</text>
-  <text x="164" y="72" font-size="12" fill="#5fb0ee" font-weight="650">Embeddings — words → vectors</text>
-  <path d="M260 84 L260 96" stroke="#9aa1b3"/>
-  <rect x="92" y="98" width="336" height="150" rx="12" fill="none" stroke="#5fb0ee" stroke-dasharray="6 4"/>
-  <text x="260" y="115" text-anchor="middle" font-size="11" fill="#9aa1b3" font-style="italic">one LAYER — repeat × N  (Stage 4)</text>
-  <rect x="120" y="124" width="280" height="42" rx="9" fill="#251b26" stroke="#df93c7"/>
-  <circle cx="144" cy="145" r="10" fill="#df93c7"/><text x="144" y="149" text-anchor="middle" font-size="11" fill="#0c1016" font-weight="700">2</text>
-  <text x="164" y="141" font-size="12" fill="#df93c7" font-weight="650">Attention — q·k → softmax → blend v</text>
-  <text x="164" y="158" font-size="10.5" fill="#df93c7">words pull in context (cat 45%, sat 45%)</text>
-  <path d="M260 166 L260 178" stroke="#9aa1b3"/>
-  <rect x="120" y="180" width="280" height="42" rx="9" fill="#15241f" stroke="#2ec79a"/>
-  <circle cx="144" cy="201" r="10" fill="#2ec79a"/><text x="144" y="205" text-anchor="middle" font-size="11" fill="#0c1016" font-weight="700">3</text>
-  <text x="164" y="197" font-size="12" fill="#2ec79a" font-weight="650">MLP — each word digests alone</text>
-  <text x="164" y="214" font-size="10.5" fill="#2ec79a">per-word refinement</text>
-  <path d="M260 248 L260 270" stroke="#9aa1b3"/>
-  <rect x="120" y="272" width="280" height="42" rx="9" fill="#241d12" stroke="#eda13c"/>
-  <circle cx="144" cy="293" r="10" fill="#eda13c"/><text x="144" y="297" text-anchor="middle" font-size="11" fill="#0c1016" font-weight="700">5</text>
-  <text x="164" y="289" font-size="12" fill="#eda13c" font-weight="650">Prediction — logits → softmax → "mat"</text>
-  <text x="164" y="306" font-size="10.5" fill="#eda13c">mat 62% · rug 19% · floor 14% · carpet 6%</text>
-  <path d="M400 293 C470 293 470 23 392 23" stroke="#eda13c" stroke-width="1.5" fill="none" stroke-dasharray="5 4"/>
-  <polygon points="392,18 392,28 384,23" fill="#eda13c"/>
-  <text x="486" y="160" font-size="10.5" fill="#eda13c" transform="rotate(90 486 160)">append "mat", run again</text>
-</svg>
+<svg id="dgm-whole" viewBox="0 0 560 360" role="img" aria-label="Diagram of the full transformer: input embeddings, then a repeated layer of attention and MLP, then prediction, with a loop arrow back to append the predicted word and run again."></svg>
+<figcaption>The five stages end to end &mdash; predict a word, append it, and run the whole machine again.</figcaption>
 </figure>
 
 
@@ -598,5 +604,261 @@ $$ P(\text{next}=w) = \frac{e^{\,z_w}}{\sum_{w'} e^{\,z_{w'}}}, \qquad \widehat{
 <p class="note2" style="font-size:.85rem; color:var(--muted); margin-top:1.4em;">External links were accurate at the time of writing; if one moves, a title search will find it.</p>
 
 </main>
+
+<script>
+/* ---- Hand-drawn diagrams, rendered with rough.js (the engine Excalidraw uses).
+        All shapes are sketched on load; text is positioned by hand and picks up
+        the handwriting fonts via CSS. Palette matches the page. ---- */
+(function () {
+  if (!window.rough) return;               // CDN blocked → figures stay empty, page still works
+  const NS = 'http://www.w3.org/2000/svg';
+  const C = {
+    ink:'#e9ebf2', muted:'#6a7184', faint:'#9aa1b3', rule:'#333949', bg2:'#1c1f28',
+    blue:'#5fb0ee', blueD:'#16202b', green:'#2ec79a', greenD:'#15241f',
+    orange:'#eda13c', orangeD:'#241d12', purple:'#df93c7', purpleD:'#251b26'
+  };
+  let seed = 1;
+
+  function ctx(id) {
+    const svg = document.getElementById(id);
+    if (!svg) return null;
+    const rc = rough.svg(svg);
+    const add = n => { svg.appendChild(n); return n; };
+    const api = { svg, rc };
+
+    api.box = (x, y, w, h, stroke, fill, o = {}) => {
+      const opt = { stroke, strokeWidth:o.sw||2, roughness:o.r??1.6, bowing:o.b??1.3, seed:seed++ };
+      if (fill && fill !== 'none') { opt.fill = fill; opt.fillStyle = 'solid'; }
+      if (o.dash) opt.strokeLineDash = o.dash;
+      return add(rc.rectangle(x, y, w, h, opt));
+    };
+    api.text = (x, y, str, o = {}) => {
+      const t = document.createElementNS(NS, 'text');
+      t.setAttribute('x', x); t.setAttribute('y', y);
+      t.setAttribute('text-anchor', o.anchor || 'middle');
+      t.setAttribute('font-size', o.size || 15);
+      t.setAttribute('fill', o.fill || C.ink);
+      if (o.weight) t.setAttribute('font-weight', o.weight);
+      if (o.cls) t.setAttribute('class', o.cls);
+      if (o.rotate) t.setAttribute('transform', `rotate(${o.rotate[0]} ${o.rotate[1]} ${o.rotate[2]})`);
+      t.textContent = str;
+      return add(t);
+    };
+    api.line = (x1, y1, x2, y2, o = {}) =>
+      add(rc.line(x1, y1, x2, y2, { stroke:o.stroke||C.muted, strokeWidth:o.sw||2, roughness:o.r??1.5, seed:seed++ }));
+    api.arrow = (x1, y1, x2, y2, o = {}) => {
+      const g = document.createElementNS(NS, 'g');
+      if (o.op != null) g.setAttribute('opacity', o.op);
+      const st = o.stroke || C.muted, sw = o.sw || 2, hl = o.head || 11, a = Math.atan2(y2 - y1, x2 - x1), sp = 0.42;
+      g.appendChild(rc.line(x1, y1, x2, y2, { stroke:st, strokeWidth:sw, roughness:1.5, seed:seed++ }));
+      g.appendChild(rc.line(x2, y2, x2 - hl*Math.cos(a-sp), y2 - hl*Math.sin(a-sp), { stroke:st, strokeWidth:sw, roughness:1.3, seed:seed++ }));
+      g.appendChild(rc.line(x2, y2, x2 - hl*Math.cos(a+sp), y2 - hl*Math.sin(a+sp), { stroke:st, strokeWidth:sw, roughness:1.3, seed:seed++ }));
+      return add(g);
+    };
+    api.ellipse = (x, y, w, h, o = {}) => {
+      const opt = { stroke:o.stroke||C.muted, strokeWidth:o.sw||1.5, roughness:o.r??1.8, seed:seed++ };
+      if (o.fill) { opt.fill = o.fill; opt.fillStyle = 'solid'; }
+      if (o.dash) opt.strokeLineDash = o.dash;
+      return add(rc.ellipse(x, y, w, h, opt));
+    };
+    api.path = (d, o = {}) =>
+      add(rc.path(d, { stroke:o.stroke||C.muted, strokeWidth:o.sw||1.6, roughness:o.r??1.6, fill:'none', seed:seed++ }));
+    return api;
+  }
+
+  /* ---- Stage 1 · embeddings: meaning becomes geometry ---- */
+  (function () {
+    const g = ctx('dgm-embed'); if (!g) return;
+    g.arrow(60, 300, 60, 32, { stroke:C.rule, sw:1.5, head:9 });
+    g.arrow(60, 300, 708, 300, { stroke:C.rule, sw:1.5, head:9 });
+    const word = (x, y, label, stroke, fill) => {
+      g.box(x, y, 86, 30, stroke, fill, { sw:1.6, r:1.4 });
+      g.text(x + 43, y + 20, label, { size:14, fill:stroke, weight:600 });
+    };
+    g.ellipse(205, 120, 220, 160, { stroke:C.green, dash:[7,7] });
+    g.text(205, 42, 'animals', { size:16, fill:C.green, cls:'scrawl' });
+    word(118, 92, 'cat', C.green, C.greenD);
+    word(224, 78, 'dog', C.green, C.greenD);
+    word(176, 134, 'kitten', C.green, C.greenD);
+    g.ellipse(548, 150, 215, 160, { stroke:C.orange, dash:[7,7] });
+    g.text(548, 70, 'actions', { size:16, fill:C.orange, cls:'scrawl' });
+    word(470, 120, 'sat', C.orange, C.orangeD);
+    word(566, 108, 'ran', C.orange, C.orangeD);
+    word(506, 168, 'slept', C.orange, C.orangeD);
+    g.ellipse(196, 256, 210, 130, { stroke:C.blue, dash:[7,7] });
+    g.text(196, 324, 'function words', { size:15, fill:C.blue, cls:'scrawl' });
+    word(110, 236, 'the', C.blue, C.blueD);
+    word(212, 236, 'on', C.blue, C.blueD);
+    word(150, 274, 'a', C.blue, C.blueD);
+    g.text(600, 246, 'nearby = related', { size:20, fill:C.faint, cls:'scrawl' });
+    g.text(600, 270, 'meaning becomes geometry', { size:20, fill:C.faint, cls:'scrawl' });
+  })();
+
+  /* ---- Stage 2 · Q, K, V: one word, three roles ---- */
+  (function () {
+    const g = ctx('dgm-qkv'); if (!g) return;
+    g.box(40, 128, 150, 64, C.faint, C.bg2);
+    g.text(115, 154, 'the @4', { size:16, fill:C.ink, weight:700 });
+    g.text(115, 176, 'x = [1,0,0,2]', { size:13, fill:C.faint, cls:'mono' });
+    g.text(115, 108, 'one word → three roles', { size:18, fill:C.faint, cls:'scrawl' });
+    const ix = 190, iy = 160;
+    const role = (y, stroke, fill, title, sub, mat) => {
+      g.box(470, y, 250, 60, stroke, fill);
+      g.text(492, y + 26, title, { size:16, fill:stroke, weight:700, anchor:'start' });
+      g.text(492, y + 46, sub, { size:13, fill:C.faint, anchor:'start', cls:'scrawl' });
+      g.arrow(ix + 4, iy, 464, y + 30, { stroke, sw:2.4 });
+      g.text((ix + 470) / 2, (iy + y + 30) / 2 - 7, mat, { size:14, fill:stroke, cls:'mono' });
+    };
+    role(26, C.blue, C.blueD, 'q — query', 'what you type into search', '× W_Q');
+    role(130, C.green, C.greenD, 'k — key', 'each word’s “title”', '× W_K');
+    role(234, C.orange, C.orangeD, 'v — value', 'the content you get back', '× W_V');
+  })();
+
+  /* ---- Stage 2 · the heart: attention flow (the POC) ---- */
+  (function () {
+    const g = ctx('dgm-attn'); if (!g) return;
+    const words = [
+      { name:'the @0', score:2,  w:0.4,  win:false },
+      { name:'cat @1', score:10, w:45.4, win:true  },
+      { name:'sat @2', score:10, w:45.4, win:true  },
+      { name:'on @3',  score:7,  w:8.0,  win:false },
+      { name:'the @4', score:3,  w:0.8,  win:false }
+    ];
+    const QX = 28, QY = 244, QW = 160, QH = 80;
+    g.box(QX, QY, QW, QH, C.blue, C.blueD);
+    g.text(QX + QW/2, QY + 30, 'the @4', { size:21, fill:C.blue, weight:700 });
+    g.text(QX + QW/2, QY + 50, 'the word predicting', { size:13, fill:C.faint, cls:'scrawl' });
+    g.text(QX + QW/2, QY + 70, 'q = [1, 2, 1]', { size:13, fill:C.blue, cls:'mono' });
+    g.text(8, QY - 26, 'broadcasts a query:', { size:17, fill:C.blue, cls:'scrawl', anchor:'start' });
+    g.text(8, QY - 8,  '“who here is relevant to me?”', { size:17, fill:C.faint, cls:'scrawl', anchor:'start' });
+    const qOut = { x:QX + QW, y:QY + QH/2 };
+    const BX = 378, BW = 196, BH = 64, TOP = 14, GAP = 84;
+    words.forEach((wd, i) => {
+      const y = TOP + i*GAP;
+      g.box(BX, y, BW, BH, wd.win ? C.purple : C.green, wd.win ? C.purpleD : C.bg2);
+      g.text(BX + BW/2, y + 26, wd.name, { size:17, fill: wd.win ? C.purple : C.green, weight:700 });
+      g.text(BX + BW/2, y + 47, 'q·k = ' + wd.score + '   →   ' + wd.w + '%', { size:13, fill:C.faint, cls:'mono' });
+      wd._left = { x:BX, y:y + BH/2 };
+      wd._right = { x:BX + BW, y:y + BH/2 };
+    });
+    words.forEach(wd => {
+      const sw = 1 + (wd.w/100)*9, op = 0.30 + (wd.w/100)*0.70;
+      g.arrow(qOut.x + 4, qOut.y, wd._left.x - 4, wd._left.y, { stroke: wd.win ? C.purple : C.muted, sw, op });
+    });
+    const OX = 660, OY = 152, OW = 196, OH = 100;
+    g.box(OX, OY, OW, OH, C.orange, C.orangeD);
+    g.text(OX + OW/2, OY + 28, 'context output', { size:16, fill:C.orange, weight:700 });
+    g.text(OX + OW/2, OY + 54, '[1.94, 4.32, 1.12]', { size:15, fill:C.orange, cls:'mono' });
+    g.text(OX + OW/2, OY + 78, '= “the”, context baked in', { size:14, fill:C.faint, cls:'scrawl' });
+    g.arrow(words[1]._right.x + 2, words[1]._right.y, OX - 4, OY + 34, { stroke:C.orange, sw:4, op:.95 });
+    g.arrow(words[2]._right.x + 2, words[2]._right.y, OX - 4, OY + 70, { stroke:C.orange, sw:4, op:.95 });
+    g.text(250, 504, 'thicker arrow = more attention', { size:18, fill:C.faint, cls:'scrawl' });
+    g.text(476, 470, 'cat (subject) & sat (verb) tie — 45% each', { size:18, fill:C.purple, cls:'scrawl' });
+    g.text(620, 132, 'blend their values', { size:18, fill:C.orange, cls:'scrawl', anchor:'start' });
+  })();
+
+  /* ---- Stage 3 · MLP: expand → nonlinearity → squeeze ---- */
+  (function () {
+    const g = ctx('dgm-mlp'); if (!g) return;
+    const feed = (x) => g.arrow(x, 85, x + 30, 85, { stroke:C.faint, sw:2, head:9 });
+    g.box(10, 58, 140, 54, C.purple, C.purpleD);
+    g.text(80, 82, 'attention out', { size:13, fill:C.purple, weight:600 });
+    g.text(80, 101, '[1.94,4.32,1.12]', { size:11, fill:C.purple, cls:'mono' });
+    feed(152);
+    g.box(186, 30, 120, 110, C.blue, C.blueD);
+    g.text(246, 82, 'EXPAND', { size:14, fill:C.blue, weight:700 });
+    g.text(246, 102, '(room to think)', { size:12, fill:C.faint, cls:'scrawl' });
+    feed(308);
+    g.box(340, 58, 80, 54, C.blue, C.blueD);
+    g.text(380, 84, 'φ', { size:20, fill:C.blue, weight:700 });
+    g.text(380, 104, 'GELU', { size:11, fill:C.faint, cls:'scrawl' });
+    feed(422);
+    g.box(454, 48, 120, 74, C.blue, C.blueD);
+    g.text(514, 80, 'squeeze', { size:14, fill:C.blue, weight:700 });
+    g.text(514, 100, 'back down', { size:12, fill:C.faint, cls:'scrawl' });
+    feed(576);
+    g.box(608, 58, 124, 54, C.green, C.greenD);
+    g.text(670, 86, 'refined word', { size:13, fill:C.green, weight:600 });
+  })();
+
+  /* ---- Stage 4 · stacked layers ---- */
+  (function () {
+    const g = ctx('dgm-layers'); if (!g) return;
+    g.text(300, 22, 'our context vector enters', { size:14, fill:C.faint, cls:'scrawl' });
+    const layer = (y, label, note, dash) => {
+      g.box(150, y, 300, 40, dash ? C.rule : C.blue, dash ? C.bg2 : C.blueD, dash ? { dash:[6,5] } : {});
+      if (dash) { g.text(300, y + 25, label, { size:13, fill:C.faint, cls:'scrawl' }); }
+      else {
+        g.text(170, y + 25, label, { size:14, fill:C.blue, weight:700, anchor:'start' });
+        g.text(430, y + 25, note, { size:12, fill:C.faint, anchor:'end', cls:'scrawl' });
+      }
+    };
+    layer(40,  'Layer 1', 'grammar, who refers to what');
+    layer(92,  'Layer 2', 'phrases combine into ideas');
+    layer(144, '… × N layers …', null, true);
+    layer(196, 'Layer N', 'ready to predict');
+    g.arrow(300, 80, 300, 92, { stroke:C.faint, sw:1.5, head:8 });
+    g.arrow(300, 132, 300, 144, { stroke:C.faint, sw:1.5, head:8 });
+    g.arrow(300, 184, 300, 196, { stroke:C.faint, sw:1.5, head:8 });
+    g.arrow(300, 236, 300, 252, { stroke:C.faint, sw:1.5, head:8 });
+    g.text(300, 278, '→ a deeply context-aware vector', { size:14, fill:C.green, cls:'scrawl' });
+  })();
+
+  /* ---- Stage 5 · prediction: match context against each candidate ---- */
+  (function () {
+    const g = ctx('dgm-predict'); if (!g) return;
+    g.box(28, 135, 170, 80, C.orange, C.orangeD);
+    g.text(113, 165, 'context', { size:16, fill:C.orange, weight:700 });
+    g.text(113, 188, '[1.94,4.32,1.12]', { size:13, fill:C.orange, cls:'mono' });
+    g.text(113, 118, 'match against each', { size:17, fill:C.faint, cls:'scrawl' });
+    g.text(113, 101, 'word’s signature', { size:17, fill:C.faint, cls:'scrawl' });
+    const cands = [
+      { n:'mat',    sig:'[2,-2,-1]',  p:61.7, win:true  },
+      { n:'rug',    sig:'[-2,-1,1]',  p:18.6, win:false },
+      { n:'floor',  sig:'[-1,-1,-1]', p:13.7, win:false },
+      { n:'carpet', sig:'[-2,-1,0]',  p:6.0,  win:false }
+    ];
+    const CX = 440, CW = 270, CH = 58, TOP = 18, GAP = 78, ox = 198, oy = 175;
+    cands.forEach((c, i) => {
+      const y = TOP + i*GAP, stroke = c.win ? C.green : C.faint;
+      g.box(CX, y, CW, CH, stroke, c.win ? C.greenD : C.bg2);
+      g.text(CX + 16, y + 25, (c.win ? '★ ' : '') + c.n, { size:16, fill:stroke, weight:700, anchor:'start' });
+      g.text(CX + 16, y + 45, c.sig + '   →   ' + c.p + '%', { size:12, fill:C.faint, anchor:'start', cls:'mono' });
+      const sw = 1 + (c.p/100)*8, op = 0.30 + (c.p/100)*0.70;
+      g.arrow(ox + 4, oy, CX - 6, y + CH/2, { stroke: c.win ? C.green : C.muted, sw, op });
+    });
+    g.text(620, 332, 'best match wins → mat (62%)', { size:18, fill:C.green, cls:'scrawl' });
+  })();
+
+  /* ---- the whole machine, with the generation loop ---- */
+  (function () {
+    const g = ctx('dgm-whole'); if (!g) return;
+    const down = (y) => g.arrow(280, y, 280, y + 16, { stroke:C.faint, sw:1.5, head:8 });
+    g.box(150, 10, 260, 34, C.rule, C.bg2);
+    g.text(280, 32, '"the cat sat on the"', { size:14, fill:C.ink, cls:'mono' });
+    down(44);
+    g.box(120, 60, 320, 36, C.blue, C.blueD);
+    g.text(135, 83, '1   Embeddings — words → vectors', { size:13, fill:C.blue, weight:650, anchor:'start' });
+    down(96);
+    g.box(92, 116, 376, 150, C.blue, 'none', { dash:[6,5], sw:1.5 });
+    g.text(280, 134, 'one LAYER — repeat × N', { size:13, fill:C.faint, cls:'scrawl' });
+    g.box(120, 144, 320, 46, C.purple, C.purpleD);
+    g.text(135, 165, '2   Attention — q·k → softmax → blend', { size:13, fill:C.purple, weight:650, anchor:'start' });
+    g.text(135, 181, 'words pull in context (cat 45%, sat 45%)', { size:10.5, fill:C.purple, anchor:'start' });
+    down(190);
+    g.box(120, 208, 320, 46, C.green, C.greenD);
+    g.text(135, 229, '3   MLP — each word digests alone', { size:13, fill:C.green, weight:650, anchor:'start' });
+    g.text(135, 245, 'per-word refinement', { size:10.5, fill:C.green, anchor:'start' });
+    down(266);
+    g.box(120, 288, 320, 46, C.orange, C.orangeD);
+    g.text(135, 309, '5   Prediction — logits → softmax → "mat"', { size:13, fill:C.orange, weight:650, anchor:'start' });
+    g.text(135, 325, 'mat 62% · rug 19% · floor 14% · carpet 6%', { size:10.5, fill:C.orange, anchor:'start' });
+    g.path('M440 311 C505 311 505 27 414 27', { stroke:C.orange, sw:1.6, r:1.8 });
+    g.line(414, 27, 427, 21, { stroke:C.orange, sw:1.6 });
+    g.line(414, 27, 427, 34, { stroke:C.orange, sw:1.6 });
+    g.text(516, 170, 'append "mat", run again', { size:12, fill:C.orange, cls:'scrawl', rotate:[90, 516, 170] });
+  })();
+})();
+</script>
 </body>
 </html>
